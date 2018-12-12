@@ -256,7 +256,7 @@ insert into references values (5, 2, 3, 'ascending');
 
 -- All attributes
 select 
-	attr_id, attr, 
+	attr_id, attr.name as 'attr_name', 
 	attr_group_id, attr_g.name as "attr_group_name", 
 	attr_type_id, attr_t.name as "attr_type_name"
 	from attributes attr
@@ -265,43 +265,40 @@ select
 
 -- All attributes for specified object type
 select attr_id, attributes.name as "attr_name"
-	from (
-		select object_type_id 
-		from object_types 
-		where object_type_id = &id
-	)
-	inner join attr_binds using (object_type_id)
-	inner join attributes using (attr_id);
+	from attr_binds inner join attributes using (attr_id)
+		where object_type_id = &id;
 
 --Hierarchy of Object Types from the specified up
-select object_type_id, name, level from object_types
+select object_type_id as 'ot_id', name as 'ot_name', 
+		level from object_types
 	start with object_type_id = &id
 		connect by object_type_id = prior parent_id;
 
 --Hierarchy of Object Types from the specified down
-select object_type_id, name, level from object_types
+select object_type_id as 'ot_id', name as 'ot_name', 
+		level from object_types
 	start with object_type_id = &id
 		connect by prior object_type_id = parent_id;
 
 --Hierarchy of embedded objects from the specified up 
-select object_id, name, level from objects
+select object_id as 'obj_id', name as 'obj_name', 
+		level from objects
 	start with object_id = &id
 		connect by object_id = prior parent_id;
 
 --Hierarchy of embedded objects from the specified down
-select object_id, name, level from objects
+select object_id as 'obj_id', name as 'obj_name', 
+		level from objects
 	start with object_id = &id
 		connect by  prior object_id = parent_id;
 
 --All objects of the same type
-with ot as 
-(
-	select object_type_id, name 
-		from object_types
-			start with object_type_id = &id
-				connect by prior object_type_id = parent_id
-) select objects.object_id, objects.name, object_type_id, ot.name
-	from ot inner join objects using (object_type_id);
+select object_type_id as 'ot_id', ot.name as 'ot_name',
+		obj.object_id as 'obj_id', obj.name as 'obj_name'
+	from object_types ot
+		start with object_type_id = &id
+		connect by prior object_type_id = parent_id
+	inner join objects obj using (object_type_id);
 
 --All attributes for the specified object
 /* В качестве value для ссылочных типов
@@ -354,7 +351,7 @@ undefine id;
 select object_id, objects.name
 	from 
 	(
-		select references.object_id 
+		select references.object_id
 		from references
 		where references.reference = &id
 	) inner join objects using (object_id);
@@ -391,7 +388,10 @@ with obj as
 hierarchy as
 (
 	select object_type_id, level as l from object_types
-		start with object_type_id in (select * from obj)
+		start with object_type_id in (
+			select object_type_id from objects
+				where object_id = $id
+			)
 			connect by object_type_id = prior parent_id
 ),
 binds as
