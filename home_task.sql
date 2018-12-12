@@ -327,32 +327,6 @@ select attr_id, attr.name as 'attr_name',
 			inner join params using (attr_id)
 	where obj.object_id = &id;
 
-with tmp as
-(
-	select o.object_type_id, attr_id, attributes.name, isrequired, default_value from
-		objects o inner join object_types ot on
-					o.object_type_id = ot.object_type_id
-					and o.object_id = &&id
-				inner join attr_binds ab on
-					o.object_type_id = ab.object_type_id
-				inner join attributes using(attr_id)
-),
-mentioned as
-(
-	select attr_id, tmp.name, value from tmp
-		inner join params p using(attr_id)
-			where p.object_id = &&id
-	union all
-		select attr_id, tmp.name, o.name as value from tmp 
-			inner join references using(attr_id)
-			inner join objects o on o.object_id = reference
-		where references.object_id = &&id
-)
-	select * from mentioned
-		union all 
-		select attr_id, tmp.name, default_value from tmp
-			where isrequired = 0 and 
-					attr_id not in (select attr_id from mentioned);
 undefine id;
 --All references to the specified object
 select object_id, objects.name
