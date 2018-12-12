@@ -255,6 +255,13 @@ insert into references values (3, 0, 3, 'none');
 insert into references values (5, 2, 3, 'ascending');
 
 -- All attributes
+/*
+		Задание 1: Получение информации обо всех атрибутах
+	(учитывая только атрибутную группу и атрибутные типы)
+	(attr_id, attr_name, attr_group_id, attr_group_name, 
+	attr_type_id, attr_type_name)
+		Решение: Несколько джоинов
+*/
 select 
 	attr_id, attr.name as 'attr_name', 
 	attr_group_id, attr_g.name as "attr_group_name", 
@@ -264,11 +271,22 @@ select
 	inner join attr_types attr_t using (attr_type_id);
 
 -- All attributes for specified object type
+/*
+		Задание 2: Получение всех атрибутов для заданного 
+	объектного типа, без учета наследования(attr_id, attr_name )
+		Решение: один джоин attr_binds с attributes
+*/
 select attr_id, attributes.name as "attr_name"
 	from attr_binds inner join attributes using (attr_id)
 		where object_type_id = &id;
 
 --Hierarchy of Object Types from the specified up
+/*
+		Задание 3: Получение иерархии ОТ(объектных типов) 
+	для заданного объектного типа(нужно получить иерархию наследования) 
+	(ot_id, ot_name, level)
+		Решение: один иерархический запрос
+*/
 select object_type_id as 'ot_id', name as 'ot_name', 
 		level from object_types
 	start with object_type_id = &id
@@ -279,7 +297,12 @@ select object_type_id as 'ot_id', name as 'ot_name',
 		level from object_types
 	start with object_type_id = &id
 		connect by prior object_type_id = parent_id;
-
+/*
+		Задание 4: Получение вложенности объектов для 
+	заданного объекта(нужно получить иерархию вложенности)
+	(obj_id, obj_name, level)
+		Решение: один иерархический запрос
+*/
 --Hierarchy of embedded objects from the specified up 
 select object_id as 'obj_id', name as 'obj_name', 
 		level from objects
@@ -291,7 +314,13 @@ select object_id as 'obj_id', name as 'obj_name',
 		level from objects
 	start with object_id = &id
 		connect by  prior object_id = parent_id;
-
+/*
+		Задание 5: Получение объектов заданного объектного
+	типа(учитывая только наследование ОТ)
+	(ot_id, ot_name, obj_id, obj_name)
+		Решение: Получаем иерархию и джоиним с объектами 
+		по object_type_id
+*/
 --All objects of the same type
 select object_type_id as 'ot_id', ot.name as 'ot_name',
 		obj.object_id as 'obj_id', obj.name as 'obj_name'
@@ -301,35 +330,29 @@ select object_type_id as 'ot_id', ot.name as 'ot_name',
 	inner join objects obj using (object_type_id);
 
 --All attributes for the specified object
-/* В качестве value для ссылочных типов
-	было принято решение использовать имя объекта ссылки
-		
-	Что происходит ? В общем, договариваемся, что у объекта есть
-	только те атрибуты, которые есть у Типа этого объекта. Т.е.
-	в params может содержаться запись, только если данный атрибут
-	связан с типом объекта.
-	Именно эти атрибуты мы и вытаскиваем в tmp.
-
-	В mentioned кладем:
-		а) Первый селект - все что есть в params с 
-		данным атрибутом и объектом
-		б) Второй селект - все что есть в references с
-		данным атрибутом и объектом (value - имя объекта ссылки)
-
-	В результате выдаем: все явно заданные параметры (mentioned)
-	плюс все атрибуты которые необязательны (value для них - дефолтное) 
-	и значение которых не задано (id атрибута нет в mentioned)
+/*
+		Задание 6: Получение значений всех атрибутов
+	(всех возможных типов) для заданного объекта
+	(без учета наследования ОТ)(attr_id, attr_name, value)
+		Решение: Находим тип объекта, находим все его атрибуты,
+	выводим сразу две колонки
 */
 select attr_id, attr.name as 'attr_name', 
 		'val: ' || value || ' date_val: ' || date_value as 'value'
 	from objects obj inner join attr_binds using (object_type_id)
 			inner join attributes attr using (attr_id)
 			inner join params using (attr_id)
-	where obj.object_id = &id;
+	where obj.object_id = &&id and params.object_id = &&id;
 
 undefine id;
 --All references to the specified object
-select object_id, objects.name
+/*
+		Задание 7: Получение ссылок на заданный объект
+	(все объекты, которые ссылаются на текущий)(ref_id, ref_name)
+		Решение: Выбираем все записи из references, у которых
+	ссылка на заданный объект
+*/
+select object_id as 'ref_id', objects.name as 'ref_name'
 	from 
 	(
 		select references.object_id
@@ -339,80 +362,32 @@ select object_id, objects.name
 
 --All attirbutes for the specified objects (including inheritance)
 /*
-	В этот раз будет проще (я не специально так закрутил).
-
-		В таблицу obj закидываем объект, с id, который нам нужен
-
-		В таблицу hierarchy закидываем все типы, которые наследует объект
-
-		В таблицу binds закидываем те атрибуты, которые 
-		связаны с классами наиболее близкими к классу выбранного объекта
-		(Если у нас есть атрибут у "Животное" и такой же у "Собка", 
-		то берем последний)
-
-		В attr_ids просто кладем все attr_id из binds
-
-		В defs закидываем все инициализированные атрибуты 
-		(те, которые упоминаются в params или references)
-
-		В undefs закидываем те атрибуты, которые не были упомянуты
-		в params или references.
-
-		Возвращаем defs + undefs 
-
+		Задание 8: Получение значений всех атрибутов
+	(всех возможных типов, без повторяющихся атрибутов) 
+	для заданного объекта( с учетом наследования ОТ)
+	Вывести в виде (attr_id, attr_name, value)
+		Решение: в таблице tmp храним уникальные attr_id:
+	Получаем иеархию типов вверх от типа заданного объекта,
+	объединяем с attr_binds по полю object_type_id и выбираем
+	все уникальные attr_id. После этого выбираем из таблицы 
+	params все записи, в которых фигурируют найденные attr_id
+	и у которых object_id равен заданному объекту.
 */
-with obj as
-(
-	select object_type_id from objects
-		where object_id = &&id
-),
-hierarchy as
-(
-	select object_type_id, level as l from object_types
-		start with object_type_id in (
-			select object_type_id from objects
-				where object_id = $id
-			)
-			connect by object_type_id = prior parent_id
-),
-binds as
-(
-	select attr_id, object_type_id, default_value from hierarchy
-	inner join attr_binds using(object_type_id)
-	inner join
-	(
-		select attr_id, min(l) as l from hierarchy 
-		inner join attr_binds using(object_type_id)
-		group by attr_id
-	) using(attr_id, l)
-),
-attr_ids as
-(
-	select attr_id, name from binds 
-		inner join attributes using(attr_id)
-),
-defs as
-(
-	select attr_ids.attr_id, name, value from attr_ids
-		inner join params p using(attr_id) where
-			p.object_id = &&id
-	union all
-	select attr_id, attr_ids.name, o.name as value
-		from attr_ids inner join references r
-			using(attr_ids) inner join objects o
-				on r.reference = o .object_id
-		where r.object_id = &&id
-),
-undefs as
-(
-	select attr_id, name, default_value as value
-		from 
-		(
-			select attr_id from attr_ids
-			minus
-			select attr_id from defs
-		) inner join binds using(attr_id) 
-		  inner join attr_ids using (attr_id) 
+with tmp as (
+	select distinct attr_id from object_types ot
+	start with object_type_id in 
+		(	
+			select object_type_id 
+			from objects 
+			where object_id = &&id
+		)
+	connect by object_type_id = prior parent_id
+	inner join attr_binds using (object_type_id)
 )
-select * from defs union all select * from undefs;
+select attr_id, attr.name as 'attr_name',
+		'val: ' || value || ' date_val: ' || date_value as 'value'
+from tmp inner join attributes attr using (attr_id)
+	inner join params prms on
+		prms.attr_id = tmp.attr_id and
+		prms.object_id = &&id
 undefine id;
