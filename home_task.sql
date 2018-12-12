@@ -320,6 +320,13 @@ select object_type_id as 'ot_id', ot.name as 'ot_name',
 	плюс все атрибуты которые необязательны (value для них - дефолтное) 
 	и значение которых не задано (id атрибута нет в mentioned)
 */
+select attr_id, attr.name as 'attr_name', 
+		'val: ' || value || ' date_val: ' || date_value as 'value'
+	from objects obj inner join attr_binds using (object_type_id)
+			inner join attributes attr using (attr_id)
+			inner join params using (attr_id)
+	where obj.object_id = &id;
+
 with tmp as
 (
 	select o.object_type_id, attr_id, attributes.name, isrequired, default_value from
