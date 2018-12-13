@@ -254,6 +254,7 @@ FordMustang: {drivers:[Ivan]};
 insert into references values (3, 0, 3, 'none');
 insert into references values (5, 2, 3, 'ascending');
 
+undefine id;
 -- All attributes
 /*
 		Задание 1: Получение информации обо всех атрибутах
@@ -263,7 +264,7 @@ insert into references values (5, 2, 3, 'ascending');
 		Решение: Несколько джоинов
 */
 select 
-	attr_id, attr.name as 'attr_name', 
+	attr_id, attr.name as "attr_name", 
 	attr_group_id, attr_g.name as "attr_group_name", 
 	attr_type_id, attr_t.name as "attr_type_name"
 	from attributes attr
@@ -276,8 +277,8 @@ select
 	объектного типа, без учета наследования(attr_id, attr_name )
 		Решение: один джоин attr_binds с attributes
 */
-select attr_id, attributes.name as "attr_name"
-	from attr_binds inner join attributes using (attr_id)
+select attr_id, attr.name as "attr_name"
+	from attr_binds inner join attributes attr using (attr_id)
 		where object_type_id = &id;
 
 --Hierarchy of Object Types from the specified up
@@ -287,13 +288,13 @@ select attr_id, attributes.name as "attr_name"
 	(ot_id, ot_name, level)
 		Решение: один иерархический запрос
 */
-select object_type_id as 'ot_id', name as 'ot_name', 
+select object_type_id as "ot_id", name as "ot_name", 
 		level from object_types
 	start with object_type_id = &id
 		connect by object_type_id = prior parent_id;
 
 --Hierarchy of Object Types from the specified down
-select object_type_id as 'ot_id', name as 'ot_name', 
+select object_type_id as "ot_id", name as "ot_name", 
 		level from object_types
 	start with object_type_id = &id
 		connect by prior object_type_id = parent_id;
@@ -304,13 +305,13 @@ select object_type_id as 'ot_id', name as 'ot_name',
 		Решение: один иерархический запрос
 */
 --Hierarchy of embedded objects from the specified up 
-select object_id as 'obj_id', name as 'obj_name', 
+select object_id as "obj_id", name as "obj_name", 
 		level from objects
 	start with object_id = &id
 		connect by object_id = prior parent_id;
 
 --Hierarchy of embedded objects from the specified down
-select object_id as 'obj_id', name as 'obj_name', 
+select object_id as "obj_id", name as "obj_name", 
 		level from objects
 	start with object_id = &id
 		connect by  prior object_id = parent_id;
@@ -322,12 +323,15 @@ select object_id as 'obj_id', name as 'obj_name',
 		по object_type_id
 */
 --All objects of the same type
-select object_type_id as 'ot_id', ot.name as 'ot_name',
-		obj.object_id as 'obj_id', obj.name as 'obj_name'
-	from object_types ot
+select object_type_id as "ot_id", ot.name as "ot_name",
+		obj.object_id as "obj_id", obj.name as "obj_name"
+from 
+	(
+		select object_type_id, ot.name from object_types ot
 		start with object_type_id = &id
 		connect by prior object_type_id = parent_id
-	inner join objects obj using (object_type_id);
+	) ot
+inner join objects obj using (object_type_id);
 
 --All attributes for the specified object
 /*
@@ -337,8 +341,8 @@ select object_type_id as 'ot_id', ot.name as 'ot_name',
 		Решение: Находим тип объекта, находим все его атрибуты,
 	выводим сразу две колонки
 */
-select attr_id, attr.name as 'attr_name', 
-		'val: ' || value || ' date_val: ' || date_value as 'value'
+select attr_id, attr.name as "attr_name", 
+		'val: ' || value || ' date_val: ' || date_value as "value"
 	from objects obj inner join attr_binds using (object_type_id)
 			inner join attributes attr using (attr_id)
 			inner join params using (attr_id)
@@ -352,7 +356,7 @@ undefine id;
 		Решение: Выбираем все записи из references, у которых
 	ссылка на заданный объект
 */
-select object_id as 'ref_id', objects.name as 'ref_name'
+select object_id as "ref_id", objects.name as "ref_name"
 	from 
 	(
 		select references.object_id
@@ -374,20 +378,23 @@ select object_id as 'ref_id', objects.name as 'ref_name'
 	и у которых object_id равен заданному объекту.
 */
 with tmp as (
-	select distinct attr_id from object_types ot
-	start with object_type_id in 
+	select distinct attr_id from 
+	(
+		select object_type_id 
+		from object_types ot
+		start with object_type_id in 
 		(	
 			select object_type_id 
 			from objects 
 			where object_id = &&id
 		)
-	connect by object_type_id = prior parent_id
+		connect by object_type_id = prior parent_id
+	)
 	inner join attr_binds using (object_type_id)
 )
-select attr_id, attr.name as 'attr_name',
-		'val: ' || value || ' date_val: ' || date_value as 'value'
+select attr_id, attr.name as "attr_name",
+		'val: ' || value || ' date_val: ' || date_value as "value"
 from tmp inner join attributes attr using (attr_id)
-	inner join params prms on
-		prms.attr_id = tmp.attr_id and
-		prms.object_id = &&id
+	inner join params prms using (attr_id)
+where prms.object_id = &&id;
 undefine id;
